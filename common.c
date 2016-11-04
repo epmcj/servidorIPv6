@@ -31,9 +31,24 @@ char* get_error_msg(int cod){
 
 /* Exibe mensagem de erro na saida padrao e termina o programa */
 
-void error(int cod){
+void print_error(int cod){
     printf("Erro: %d - Descrição: %s\n", cod, get_error_msg(cod));
-    exit(1);
+}
+
+/* Envia uma mensagem de erro para o cliente com o codigo especificado. Retorna 
+ * 0 em caso de sucesso, -1 caso contrario. */
+
+int send_error(int cod, int socket, int buffer_size){
+    char msg[3];
+
+    msg[0] = ERROR;
+    if(cod == E_BASIC)  // Tratamento de overflow.
+        msg[1] = 11;
+    else
+        msg[1] = -cod;
+    msg[2] = '\0';
+
+    return sendTo(socket, msg, 3, buffer_size);
 }
 
 /* Recebe mensagens (de tamanho maximo igual a buffer_size) enviadas pelo 
@@ -70,7 +85,6 @@ int sendTo(int c_socket, char *buffer, int buffer_size, int portion){
             portion = (buffer_size - i);
 
         numBytesSent = send(c_socket, &buffer[i], portion, 0);
-printf("::%d\n", (int)numBytesSent);
         if(numBytesSent <= 0)
             return -1;
 
@@ -93,7 +107,7 @@ int send_list(int c_socket, DIR *dir, int buffer_size){
     if(buffer == NULL)
         exit(1);
 
-    buffer[0] = 'O'; // Sinalizacao de mensagem OK.
+    buffer[0] = OK;
     // Criando uma string que contem o nome de todos os arquivos no diretorio.
     while((dir_ent = readdir(dir)) != NULL){
         if(dir_ent->d_type == DT_REG){  // Verifica se e' um arquivo.
@@ -101,10 +115,9 @@ int send_list(int c_socket, DIR *dir, int buffer_size){
             strcat(buffer,"\n");
         }
     }
-printf("> %s\n", buffer);
+
     i = 0;
     bytesToSend = strlen(buffer)+1; // Lista + '\0'
-printf("::%d::\n", bytesToSend);
 
     // Enviando 
     while(i < bytesToSend){
@@ -113,7 +126,6 @@ printf("::%d::\n", bytesToSend);
             buffer_size = (bytesToSend - i);
 
         numBytesSent = send(c_socket, &buffer[i], buffer_size, 0);
-printf("::%d\n", (int)numBytesSent);
         if(numBytesSent <= 0){
             free(buffer);
             return -1;
@@ -121,14 +133,15 @@ printf("::%d\n", (int)numBytesSent);
 
         i += numBytesSent;
     }
-    //send(c_socket, buffer, bytesToSend, buffer_size);
 
     free(buffer);
     return 0;
 }
 
 /* Envia o arquivo com nome fname pela rede, em mensagens de tamanho maximo 
- * igual a buffer_size. Retorna 0 em caso de sucesso e -1 caso contrario. */
+ * igual a buffer_size. Retorna 0 em caso de sucesso, E_FNF caso o arquivo nao 
+ * seja encontrado, E_COMMUNICATE em caso de erro de comunicacao, ou E_POINTER
+ * em caso de erro de alocacao de memoria. */
 
 int send_file(int c_socket, int buffer_size, char *fname){
     FILE *fp;
@@ -138,50 +151,43 @@ int send_file(int c_socket, int buffer_size, char *fname){
 
     buffer = (char*)calloc(buffer_size, sizeof(char));
     if(buffer == NULL)
-        exit(1);
+        return E_POINTER;
 
-    fp = fopen(fname, "r");
+    fp = fopen(fname, "rb");
     if(fp == NULL){ // Mandar mensagem de arquivo não encontrado.
-        buffer[0] = 'E';
-        buffer[1] = E_FNF;
-        buffer[2] = '\0';
-
-        sendTo(c_socket, buffer, 3, buffer_size);
         free(buffer);
-        return -1;
+        return E_FNF;
     }
 
     // Processo de envio do arquivo:
-    buffer[0] = 'O';    // Sinalizacao de mensagem OK.
-    bytesRead = fread(&buffer[1], 1, buffer_size - 1, fp);
-    if(bytesRead > 0) // Correcao para incluir o 'O'.
-        bytesRead++;
+    bytesRead = fread(&buffer[1], 1, buffer_size-1, fp);
 
     end_msg = 0;
     while(!end_msg){
         // Se leu menos bytes do que deveria, ou aconteceu um problema ou se chegou no fim de arquivo.
-        if(bytesRead != buffer_size){
+        if(bytesRead != buffer_size-1){
             if(feof(fp)){ // Caso tenha chegado ao fim do arquivo, adicionar o EOF na mensagem.
-                buffer[bytesRead] = EOF;
+                buffer[0] = END;
                 end_msg = 1;
-                buffer_size = bytesRead+1;
+                buffer_size = bytesRead;
 
             } else{
                 fclose(fp);
                 free(buffer);
-                return -1;
+                return E_COMMUNICATE;
             }
-        }
+        } else {
+	    buffer[0] = OK;	
+	}
 
         numBytesSent = send(c_socket, buffer, buffer_size, 0);
-printf("::%d\n", (int)numBytesSent);
         if(numBytesSent <= 0){
             fclose(fp);
             free(buffer);
-            return -1;
+            return E_COMMUNICATE;
         }
 
-        bytesRead = fread(buffer, 1, buffer_size, fp);
+        bytesRead = fread(&buffer[1], 1, buffer_size-1, fp);
     }
 
     fclose(fp);

@@ -17,11 +17,14 @@
 #define E_CMD 			-10
 #define E_BASIC 		-999
 
+#define ERROR 			'E'
+#define OK				'O'
+#define END 			'F'
+
 #define MSG_SIZE		1000
 #define PATH_SIZE		1024
 #define MAX_THREADS		1000
 #define MAX_CON 		5    // Numero maximo de pedidos de conexao em espera. 
-
 
 
 /* Retorna a mensagem de erro equivalente ao codigo passado. */
@@ -29,6 +32,10 @@ char* get_error_msg(int cod);
 
 /* Exibe mensagem de erro na saida padrao e termina o programa */
 void print_error(int cod);
+
+/* Envia uma mensagem de erro para o cliente com o codigo especificado. Retorna 
+ * 0 em caso de sucesso, -1 caso contrario. */
+int send_error(int cod, int socket, int buffer_size);
 
 /* Recebe mensagens (de tamanho maximo igual a buffer_size) enviadas pelo 
  * cliente e as unifica em uma unica mensagem, que e' armazenada no buffer.   
@@ -45,5 +52,7 @@ int sendTo(int c_socket, char *buffer, int buffer_size, int portion);
 int send_list(int c_socket, DIR *dir, int buffer_size);
 
 /* Envia o arquivo com nome fname pela rede, em mensagens de tamanho maximo 
- * igual a buffer_size. Retorna 0 em caso de sucesso e -1 caso contrario. */
+ * igual a buffer_size. Retorna 0 em caso de sucesso, E_FNF caso o arquivo nao 
+ * seja encontrado, E_COMMUNICATE em caso de erro de comunicacao, ou E_POINTER
+ * em caso de erro de alocacao de memoria. */
 int send_file(int c_socket, int buffer_size, char *fname);
