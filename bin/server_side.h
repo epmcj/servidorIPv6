@@ -48,7 +48,8 @@ int sendTo(int c_socket, char *buffer, int buffer_size, int portion);
 
 /* Envia uma lista de todos os arquivos contidos no diretorio dir pela rede, em
  * mensagens de tamanho maximo igual a buffer_size. Retorna 0 em caso de 
- * sucesso, -1 caso contrario. */
+ * sucesso, E_BASIC caso o diretorio esteja vazio, E_POINTER em caso de erro de
+ * alocacao do buffer ou E_COMMUNICATE caso aconteca erro na comunicacao. */
 int send_list(int c_socket, DIR *dir, int buffer_size);
 
 /* Envia o arquivo com nome fname pela rede, em mensagens de tamanho maximo 

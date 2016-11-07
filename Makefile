@@ -1,6 +1,6 @@
-all: server_TP1.c common.c client_TP1.c
-		gcc -pthread -o servidorFTP server_TP1.c common.c
-		gcc -o clienteFTP client_TP1.c
+all: bin/server_FTP.c bin/client_FTP.c bin/server_side.c
+		gcc -pthread -o servidorFTP bin/server_FTP.c bin/server_side.c
+		gcc -o clienteFTP bin/client_FTP.c
 
 clean: 
 		rm -f servidorFTP 

@@ -1,4 +1,4 @@
-#include "common.h"
+#include "server_side.h"
 
 /* Retorna a mensagem de erro equivalente ao codigo passado. */
 
@@ -95,7 +95,8 @@ int sendTo(int c_socket, char *buffer, int buffer_size, int portion){
 
 /* Envia uma lista de todos os arquivos contidos no diretorio dir pela rede, em
  * mensagens de tamanho maximo igual a buffer_size. Retorna 0 em caso de 
- * sucesso, -1 caso contrario. */
+ * sucesso, E_BASIC caso o diretorio esteja vazio, E_POINTER em caso de erro de
+ * alocacao do buffer ou E_COMMUNICATE caso aconteca erro na comunicacao. */
 
 int send_list(int c_socket, DIR *dir, int buffer_size){
     struct dirent *dir_ent;
@@ -105,7 +106,7 @@ int send_list(int c_socket, DIR *dir, int buffer_size){
 
     buffer = (char*)calloc(MSG_SIZE, sizeof(char));
     if(buffer == NULL)
-        exit(1);
+        return E_POINTER;
 
     buffer[0] = OK;
     // Criando uma string que contem o nome de todos os arquivos no diretorio.
@@ -114,6 +115,15 @@ int send_list(int c_socket, DIR *dir, int buffer_size){
             strcat(buffer, dir_ent->d_name);
             strcat(buffer,"\n");
         }
+    }
+
+    // Se o diretorio estiver vazio, deve sinalizar erro.
+    if(strlen(buffer) == 1){
+        free(buffer);
+        return E_BASIC;
+
+    } else{
+        buffer[strlen(buffer)-1] = '\0';    // Retirando ultimo '\n' colocado.
     }
 
     i = 0;
@@ -128,7 +138,7 @@ int send_list(int c_socket, DIR *dir, int buffer_size){
         numBytesSent = send(c_socket, &buffer[i], buffer_size, 0);
         if(numBytesSent <= 0){
             free(buffer);
-            return -1;
+            return E_COMMUNICATE;
         }
 
         i += numBytesSent;
@@ -165,11 +175,13 @@ int send_file(int c_socket, int buffer_size, char *fname){
     end_msg = 0;
     while(!end_msg){
         // Se leu menos bytes do que deveria, ou aconteceu um problema ou se chegou no fim de arquivo.
+      
         if(bytesRead != buffer_size-1){
             if(feof(fp)){ // Caso tenha chegado ao fim do arquivo, adicionar o EOF na mensagem.
                 buffer[0] = END;
                 end_msg = 1;
-                buffer_size = bytesRead;
+
+                buffer_size = bytesRead+1;
 
             } else{
                 fclose(fp);
@@ -183,7 +195,7 @@ int send_file(int c_socket, int buffer_size, char *fname){
         numBytesSent = send(c_socket, buffer, buffer_size, 0);
         if(numBytesSent <= 0){
             fclose(fp);
-            free(buffer);
+            free(buffer);           
             return E_COMMUNICATE;
         }
 

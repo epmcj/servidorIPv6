@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
@@ -14,9 +15,14 @@
 
 //Definicao dos codigos de erro
 char* Erros[11];
+//Contador global para medir o tempo
+struct timeval tempo;
 
 void iniciarECods();
 void errorMsg(int codErro);
+void IniciarCronometro();
+double PararCronometro();//retorna o tempo em segundos dede a 
+//ultima vez em que "IniciarCronometro" foi chamada
 
 int main(int argc, char** argv){
 	char modo;
@@ -25,6 +31,7 @@ int main(int argc, char** argv){
 	in_port_t porta   = -1;
 	int tam_buffer 	  = 0;
 	char* buffer      = NULL;
+	unsigned int transferido = 0;//Numero de bytes enviados ou recebidos
 	iniciarECods();//Inicia o controle de erros
 	if(argc<5){//formato errado
 		errorMsg(-1);
@@ -55,6 +62,9 @@ int main(int argc, char** argv){
 		exit(0);
 	}
 	
+	//Terminado o processamento da linha de comando, 
+	IniciarCronometro();
+
 	buffer = (char*)malloc(tam_buffer+1);
 	if(buffer == NULL){
 		errorMsg(-9);
@@ -71,7 +81,6 @@ int main(int argc, char** argv){
 	memset(&servAddr, 0, sizeof(servAddr));//completando a estrutura com 0's
 	servAddr.sin6_family = AF_INET6;
 	inet_pton(AF_INET6, IP_servidor, &servAddr.sin6_addr.s6_addr);
-	//servAddr.sin6_addr = in6addr_any;
 	servAddr.sin6_port = htons(porta);
 	
 	if(connect(sock, (struct sockaddr*) &servAddr, sizeof(servAddr))<0){
@@ -88,11 +97,11 @@ int main(int argc, char** argv){
 			errorMsg(-7);
 			exit(0);
 		}
-	
+		transferido += 2;
 	}else{//modo GET
 		int qtd = strlen(nomeArquivo)+1;//comprimento do nome do arquivo (incuindo o \0)
 		int i = 0;//atual indice do buffer
-		int j = 0;//quantos caracteres do arquivo ja foram enviados
+		int j = 0;//quantos caracteres do nome do arquivo ja foram enviados
 		buffer[i++] = 'G';//tipo de comando:get
 		while(j<qtd){
 			while((i<tam_buffer)&&(j<qtd)){//completa o buffer com o que tem que ser enviado e atualiza os marcadores
@@ -104,21 +113,25 @@ int main(int argc, char** argv){
 			}
 			if(i==tam_buffer)i=0;
 		}
+		transferido += 1+qtd;//transferiu o 'G' e depois o nome do arquivo
 	}
 
 	char keep = 1;//flag que termina o recebimento quando encontra um \0 ou eof
 	int i,n;//para o percorrimento de vetores
-	if((n=recv(sock, buffer, tam_buffer, 0))<0){//recebe a primeira msg
+	if((n=recv(sock, buffer, tam_buffer, 0))<=0){//recebe a primeira msg
 		//falha
 		errorMsg(-7);
 		exit(0);
 	}
-
+	transferido += n;
 	if(buffer[0]=='E'){//o servidor teve um erro
-		errorMsg(-(*(buffer+1)));
+		if(buffer[1] == 11) // 11 -> -999 (tratamento de overflow)
+			errorMsg(-999);
+		else
+			errorMsg(-(*(buffer+1)));
 		exit(0);
 	}
-	
+
 	//se não há erro, um tratamento diferente para cada modo
 	if(modo == LIST){
 		//trata o resto da primeira mensagem
@@ -132,11 +145,12 @@ int main(int argc, char** argv){
 			}
 		}
 		while(keep){//trata outras mensagens
-			if(recv(sock, buffer, tam_buffer, 0)<0){
+			if((n=recv(sock, buffer, tam_buffer, 0))<=0){
 				//falha
 				errorMsg(-7);
 				exit(0);
 			}
+			transferido += n;
 			for(i=0;i<tam_buffer;i++){//percorre o buffer
 				if(buffer[i]=='\0'){
 					keep=0;
@@ -160,12 +174,12 @@ int main(int argc, char** argv){
 		}
 		while(buffer[0]!='F'){//trata outras mensagens
 
-			if((n=recv(sock, buffer, tam_buffer, 0))<0){
+			if((n=recv(sock, buffer, tam_buffer, 0))<=0){
 				//falha
 				errorMsg(-7);
 				exit(0);
-			}
-//printf("::%d",n);
+			}	
+			transferido += n;
 			for(i=1;i<n;i++){//percorre o buffer
 				fwrite(&(buffer[i]),1,1,arq);//suponho que a lista venha formatada
 			}
@@ -173,6 +187,10 @@ int main(int argc, char** argv){
 		fclose(arq);
 	}
 	close(sock);
+	float fim = PararCronometro();
+	if(modo==GET)//imprime a estimativa de taxa de transferencia
+		printf("Arquivo %s\tBuffer %5u byte, %10.2f kbps (%u bytes em %3.6f s)\n", nomeArquivo, tam_buffer, ((double)transferido*8)/(1000*fim), transferido, fim);
+
 	free(buffer);
 	
 	return 0;
@@ -197,4 +215,22 @@ void errorMsg(int codErro){
 		printf("Erro %d - Descricao: %s\n",codErro, Erros[(-codErro)-1]);
 	else
 		printf("Erro %d - Descricao: %s\n",codErro, Erros[10]);
+}
+
+void IniciarCronometro(){
+	if(gettimeofday(&tempo, NULL)){
+		errorMsg(-999);//se gettimeofday não retornar zero, erro
+		exit(0);
+	}
+}
+double PararCronometro(){
+	struct timeval fim;
+	if(gettimeofday(&fim, NULL)){
+		errorMsg(-999);//se gettimeofday não retornar zero, erro
+		exit(0);
+	}
+	//se não der erro
+	double t0 = (double)tempo.tv_sec+(double)tempo.tv_usec/1000000;
+	double t1 = (double)fim.tv_sec+(double)fim.tv_usec/1000000;
+	return t1-t0;
 }

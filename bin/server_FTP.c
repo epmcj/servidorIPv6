@@ -7,7 +7,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <pthread.h>
-#include "common.h"
+#include "server_side.h"
 
 // ENVIAR ERRO COM VALOR ABSOLUTO ERRO = -E_POINRTER;
 
@@ -91,7 +91,7 @@ int main(int argc, char *argv[]){
             return 1;
         }
 
-	printf("Connected\n");
+//printf("Connected\n");
 
         // Criando thread para atender a um cliente.
         thread = (pthread_t*)malloc(sizeof(pthread_t));
@@ -110,17 +110,6 @@ int main(int argc, char *argv[]){
             return 1;
         }
 
-        /*if(i < MAX_THREADS){
-            args[i].c_socket = c_socket;
-            args[i].dir_name = dir_name;
-            args[i].buffer_size = buffer_size;
-
-            sig = pthread_create(&(thread[i]), NULL, HandleCall, &(args[i]));
-            if(sig != 0)
-                error(E_BASIC);
-
-            i++;
-        }*/
     }
 
     closedir(dir);
@@ -149,9 +138,15 @@ void* HandleCall(void* arg){
                     print_error(E_COMMUNICATE);
 
             } else{
-printf("LIST COMMAND.\n");
-                if(send_list(argm->c_socket, dir, argm->buffer_size) < 0)
-                    print_error(E_COMMUNICATE);
+//printf("LIST COMMAND.\n");
+                if((error = send_list(argm->c_socket, dir, argm->buffer_size)) < 0){
+                    if(error == E_BASIC){
+                        if(send_error(E_BASIC, argm->c_socket, argm->buffer_size) < 0)
+                           print_error(E_COMMUNICATE); 
+                    } else 
+                        print_error(E_COMMUNICATE);
+
+                }
 
                 close(dir);
             }
@@ -159,7 +154,7 @@ printf("LIST COMMAND.\n");
 
         case 'G':   // Comando 'get'
             sprintf(pathname, "%s%s", argm->dir_name, &msg[1]);
-printf("GET COMMAND. %s\n", pathname);
+//printf("GET COMMAND. %s\n", pathname);
             error = send_file(argm->c_socket, argm->buffer_size, pathname);
             if(error < 0 && error != E_COMMUNICATE){
                 if(send_error(error, argm->c_socket, argm->buffer_size) < 0)
