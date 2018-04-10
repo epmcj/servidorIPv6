@@ -1,6 +1,6 @@
 Trabalho Prático I da Disciplina de Redes de Computadores
 ===============================================================================
-**Alunos: Alexader Decker e Eduardo Pinto**
+**Alunos: [Alexader Decker](https://github.com/AlexDecker) e [Eduardo Pinto](https://github.com/epmcj)**
 
  Os códigos fontes dos dois programas estão contidos na pasta bin. Os 
  arquivos server_FTP.c, server_side.c e server_side.h são referentes à 
